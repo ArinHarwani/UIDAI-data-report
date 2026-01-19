@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APR Diverging Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-y: scroll;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-top: 20px;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+
+        #legend {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+            position: sticky;
+            top: 0;
+            background: #1a1a1a;
+            padding: 10px;
+            z-index: 10;
+            width: 100%;
+            border-bottom: 1px solid #333;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        #chart-container {
+            width: 90vw;
+            margin: 0 auto 40px auto;
+            position: relative;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 6px;
+            pointer-events: none;
+            font-size: 0.85em;
+            opacity: 0;
+            transition: opacity 0.1s;
+            z-index: 100;
+        }
+
+        .row-line {
+            stroke: #333;
+            stroke-width: 1px;
+            stroke-dasharray: 2;
+        }
+
+        .axis text {
+            fill: #ccc;
+            font-size: 13px;
+        }
+
+        .bar-label {
+            fill: #fff;
+            font-size: 11px;
+            alignment-baseline: middle;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="legend">
+        <h1>District APR Performance</h1>
+        <div style="flex-grow:1"></div>
+        <div class="legend-item">
+            <div class="dot" style="background: #ef5350;"></div> Ghost Village (< 1.0)</div>
+                <div class="legend-item">
+                    <div class="dot" style="background: #66bb6a;"></div> Boom Town (> 1.0)
+                </div>
+                <div style="flex-grow:1"></div>
+        </div>
+
+        <div id="chart-container"></div>
+        <div id="tooltip" class="tooltip"></div>
+
+        <script>
+            // Embedded Data
+            const aprGraphData = [
+                { "id": "785665", "district": "Sibsagar", "apr": 0.39, "pop": 50781, "type": "ghost" },
+                { "id": "713367", "district": "Barddhaman", "apr": 0.45, "pop": 44354, "type": "ghost" },
+                { "id": "781353", "district": "Nalbari", "apr": 1.02, "pop": 19786, "type": "boom" },
+                { "id": "416513", "district": "Sindhudurg", "apr": 1.28, "pop": 15734, "type": "boom" },
+                { "id": "172027", "district": "Shimla", "apr": 1.47, "pop": 13797, "type": "boom" },
+                { "id": "172031", "district": "Shimla", "apr": 1.47, "pop": 13797, "type": "boom" },
+                { "id": "643238", "district": "The Nilgiris", "apr": 1.39, "pop": 14708, "type": "boom" },
+                { "id": "172108", "district": "Kinnaur", "apr": 3.69, "pop": 5608, "type": "boom" },
+                { "id": "786629", "district": "Tirap", "apr": 1.11, "pop": 18663, "type": "boom" },
+                { "id": "171222", "district": "Shimla", "apr": 1.51, "pop": 13797, "type": "boom" },
+                { "id": "171218", "district": "Shimla", "apr": 1.52, "pop": 13797, "type": "boom" },
+                { "id": "403403", "district": "North Goa", "apr": 1.41, "pop": 14873, "type": "boom" },
+                { "id": "793107", "district": "East Khasi Hills", "apr": 0.84, "pop": 25028, "type": "ghost" },
+                { "id": "643237", "district": "The Nilgiris", "apr": 1.43, "pop": 14708, "type": "boom" },
+                { "id": "629805", "district": "Kanniyakumari", "apr": 0.86, "pop": 24610, "type": "ghost" },
+                { "id": "576114", "district": "Udupi", "apr": 1.28, "pop": 16583, "type": "boom" },
+                { "id": "175132", "district": "Lahul and Spiti", "apr": 7.39, "pop": 2869, "type": "boom" },
+                { "id": "682016", "district": "Ernakulam", "apr": 0.9, "pop": 23614, "type": "ghost" },
+                { "id": "689571", "district": "Alappuzha", "apr": 1.17, "pop": 18186, "type": "boom" },
+                { "id": "742191", "district": "Murshidabad", "apr": 0.3, "pop": 71038, "type": "ghost" },
+                { "id": "504220", "district": "Adilabad", "apr": 0.37, "pop": 57109, "type": "ghost" },
+                { "id": "643204", "district": "The Nilgiris", "apr": 1.46, "pop": 14708, "type": "boom" },
+                { "id": "713326", "district": "Barddhaman", "apr": 0.48, "pop": 44354, "type": "ghost" },
+                { "id": "403728", "district": "South Goa", "apr": 1.44, "pop": 14896, "type": "boom" },
+                { "id": "173204", "district": "Solan", "apr": 1.12, "pop": 19344, "type": "boom" },
+                { "id": "403803", "district": "South Goa", "apr": 1.46, "pop": 14896, "type": "boom" },
+                { "id": "403104", "district": "North Goa", "apr": 1.47, "pop": 14873, "type": "boom" },
+                { "id": "403806", "district": "South Goa", "apr": 1.48, "pop": 14896, "type": "boom" },
+                { "id": "685591", "district": "Idukki", "apr": 1.13, "pop": 19456, "type": "boom" },
+                { "id": "283207", "district": "Firozabad", "apr": 0.27, "pop": 80586, "type": "ghost" },
+                { "id": "851115", "district": "Begusarai", "apr": 0.25, "pop": 87369, "type": "ghost" },
+                { "id": "472336", "district": "Tikamgarh", "apr": 0.31, "pop": 72258, "type": "ghost" },
+                { "id": "176094", "district": "Kangra", "apr": 1.53, "pop": 14520, "type": "boom" },
+                { "id": "786006", "district": "Dibrugarh", "apr": 0.5, "pop": 44211, "type": "ghost" },
+                { "id": "176097", "district": "Kangra", "apr": 1.54, "pop": 14520, "type": "boom" },
+                { "id": "602117", "district": "Kancheepuram", "apr": 0.59, "pop": 37719, "type": "ghost" },
+                { "id": "713429", "district": "Barddhaman", "apr": 0.51, "pop": 44354, "type": "ghost" },
+                { "id": "682035", "district": "Ernakulam", "apr": 0.96, "pop": 23614, "type": "ghost" },
+                { "id": "713386", "district": "Paschim Bardhaman", "apr": 6.188, "pop": 3652, "type": "boom" },
+                { "id": "680020", "district": "Thrissur", "apr": 1.23, "pop": 18469, "type": "boom" }
+            ];
+
+            document.addEventListener('DOMContentLoaded', () => {
+                // 1. Prepare Data
+                // Filter duplicates if any, based on ID
+                const data = aprGraphData
+                    .map(d => ({ ...d, diff: d.apr - 1.0 }))
+                    .sort((a, b) => a.diff - b.diff);
+
+                // 2. Setup Dimensions
+                const container = document.getElementById('chart-container');
+                const margin = { top: 50, right: 30, bottom: 20, left: 160 };
+                const rowHeight = 40;
+
+                // Ensure width is valid (wait for render or assume decent default)
+                let containerWidth = container.clientWidth;
+                if (!containerWidth || containerWidth < 300) containerWidth = window.innerWidth * 0.9;
+
+                const width = containerWidth - margin.left - margin.right;
+                const height = data.length * rowHeight;
+
+                // 3. Create SVG
+                const svg = d3.select("#chart-container")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // 4. Scales
+                // Extend domain slightly to ensure bars aren't edge-to-edge
+                const extent = d3.extent(data, d => d.diff);
+                const x = d3.scaleLinear()
+                    .domain([Math.min(-1, extent[0]), Math.max(1, extent[1])]) // Ensure center isn't clamped
+                    .range([0, width])
+                    .nice();
+
+                const zeroX = x(0);
+
+                // 5. Axes
+                svg.append("g")
+                    .attr("class", "axis")
+                    .call(d3.axisTop(x).tickFormat(d => (d + 1).toFixed(1)));
+
+                svg.append("g")
+                    .attr("class", "axis y-axis")
+                    .call(d3.axisLeft(d3.scaleBand().range([0, height])).tickSize(0).tickFormat("")); // Invisible Y axis, we manually place label
+
+                // Center Line
+                svg.append("line")
+                    .attr("x1", zeroX).attr("x2", zeroX)
+                    .attr("y1", 0).attr("y2", height)
+                    .attr("stroke", "#fff").attr("stroke-dasharray", "4").attr("opacity", 0.3);
+
+                // 6. Rows (Groups)
+                // This is the CRITICAL fix: Everything related to a row is inside this group.
+                const rows = svg.selectAll(".row")
+                    .data(data)
+                    .join("g")
+                    .attr("class", "row")
+                    .attr("transform", (d, i) => `translate(0, ${i * rowHeight})`);
+
+                // Hover Background (Invisible rect to catch mouse)
+                rows.append("rect")
+                    .attr("x", -margin.left) // Cover text too
+                    .attr("width", width + margin.left)
+                    .attr("height", rowHeight)
+                    .attr("fill", "transparent")
+                    .attr("class", "hover-capture")
+                    .on("mouseenter", function (event, d) {
+                        d3.select(this).attr("fill", "#252525");
+                        d3.select("#tooltip").style("opacity", 1)
+                            .html(`
+                    <strong>${d.district}</strong> (${d.id})<br>
+                    APR Score: <span style="color:${d.apr < 1 ? '#ef5350' : '#66bb6a'}">${d.apr}</span><br>
+                    Pop: ${d.pop ? d.pop.toLocaleString() : 'N/A'}
+                `)
+                            .style("left", (event.pageX + 15) + "px")
+                            .style("top", (event.pageY - 15) + "px");
+                    })
+                    .on("mouseleave", function () {
+                        d3.select(this).attr("fill", "transparent");
+                        d3.select("#tooltip").style("opacity", 0);
+                    });
+
+                // Label (Text)
+                rows.append("text")
+                    .attr("x", -10)
+                    .attr("y", rowHeight / 2)
+                    .attr("text-anchor", "end")
+                    .attr("dominant-baseline", "middle")
+                    .attr("fill", "#ccc")
+                    .style("font-size", "12px")
+                    .text(d => `${d.district} (${d.id})`);
+
+                // The Bar (Rect)
+                rows.append("rect")
+                    .attr("x", d => x(Math.min(0, d.diff)))
+                    .attr("y", 10)
+                    .attr("width", d => {
+                        const w = Math.abs(x(d.diff) - zeroX);
+                        return isNaN(w) ? 0 : Math.max(1, w); // Ensure visible
+                    })
+                    .attr("height", rowHeight - 20)
+                    .attr("fill", d => d.diff < 0 ? "#ef5350" : "#66bb6a")
+                    .attr("rx", 3);
+
+                // Value on Bar
+                rows.append("text")
+                    .attr("class", "bar-label")
+                    .attr("x", d => d.diff < 0 ? x(d.diff) - 6 : x(d.diff) + 6)
+                    .attr("y", rowHeight / 2)
+                    .attr("text-anchor", d => d.diff < 0 ? "end" : "start")
+                    .attr("dominant-baseline", "middle")
+                    .text(d => d.apr.toFixed(2));
+
+            });
+        </script>
+</body>
+
+</html>
