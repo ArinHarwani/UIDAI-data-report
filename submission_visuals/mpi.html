@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>India MPI Heatmap</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .legend-gradient {
+            background: linear-gradient(to right, #2c7bb6, #ffffbf, #d7191c);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="map"></div>
+
+    <div class="glass-panel">
+        <h1>India MPI Score</h1>
+        <div id="stats" class="stats">
+            <p><strong>Multidimensional Poverty Index</strong></p>
+            <p style="font-size:0.9em; opacity:0.8;">State-level data</p>
+        </div>
+    </div>
+
+    <div class="legend" id="legend"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Data Scripts -->
+    <script src="india_states_geo.js"></script>
+    <script src="mpi_data.js"></script>
+
+    <!-- Main Script -->
+    <script src="mpi_script.js"></script>
+</body>
+
+</html>

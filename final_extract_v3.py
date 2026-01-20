@@ -9,7 +9,7 @@ EXPECTED_STATES = [
     "TRIPURA", "MEGHALAYA", "ASSAM", "WEST BENGAL", "JHARKHAND", "ODISHA",
     "CHHATTISGARH", "MADHYA PRADESH", "GUJARAT", "DAMAN & DIU", "DADRA & NAGAR HAVELI",
     "MAHARASHTRA", "ANDHRA PRADESH", "KARNATAKA", "GOA", "LAKSHADWEEP", "KERALA",
-    "TAMIL NADU", "PUDUCHERRY", "ANDAMAN & NICOBAR ISLANDS", "TELANGANA", "LADAKH"
+    "TAMIL NADU", "PUDUCHERRY", "ANDAMAN & NICOBAR ISLANDS", "ANDAMAN & NICOBAR", "TELANGANA", "LADAKH"
 ]
 
 def clean_state_name(name):
@@ -99,8 +99,11 @@ def extract_data(pdf_path, output_csv):
             # If we found matches > num_states, filter by left-to-right order?
             # Or if matches < num_states, we have a problem.
             
-            if len(states_found) == num_states:
-                for s_idx, state in enumerate(states_found):
+            if len(states_found) >= num_states:
+                # If we found extra states (e.g. 'India' from title), take the last N matching the data columns
+                valid_states = states_found[-num_states:]
+                
+                for s_idx, state in enumerate(valid_states):
                     base = s_idx * 3
                     if base+2 < len(data_vals):
                         results.append({
@@ -114,11 +117,47 @@ def extract_data(pdf_path, output_csv):
 
     # Write CSV
     with open(output_csv, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=['State', 'Person', 'Male', 'Female'])
+        fieldnames = ['State', 'Urban_Person', 'Urban_Male', 'Urban_Female', 
+                      'Rural_Person', 'Rural_Male', 'Rural_Female']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(results)
-    print(f"Done. {len(results)} rows extracted.")
+        
+        # Deduplicate by State, prefer first occurrence or merge?
+        # India might appear multiple times.
+        seen_states = set()
+        
+        for row in results:
+            state = row['State']
+            if state in seen_states:
+                continue
+            seen_states.add(state)
+            
+            # Calculate Rural = 100 - Urban
+            # Ensure values are floats
+            try:
+                u_p = float(row['Person'])
+                u_m = float(row['Male'])
+                u_f = float(row['Female'])
+                
+                r_p = 100 - u_p
+                r_m = 100 - u_m
+                r_f = 100 - u_f
+                
+                writer.writerow({
+                    'State': state,
+                    'Urban_Person': f"{u_p:.2f}",
+                    'Urban_Male': f"{u_m:.2f}",
+                    'Urban_Female': f"{u_f:.2f}",
+                    'Rural_Person': f"{r_p:.2f}",
+                    'Rural_Male': f"{r_m:.2f}",
+                    'Rural_Female': f"{r_f:.2f}"
+                })
+            except ValueError:
+                print(f"Skipping bad data for {state}: {row}")
+
+    print(f"Done. {len(seen_states)} unique states extracted.")
 
 if __name__ == "__main__":
     pdf_file = "Population Projection Report 2011-2036 - upload_compressed_0.pdf"
-    extract_data(pdf_file, "projected_urban_pop_2025.csv")
+    # Update output filename to match what gen_stacked_comparison.py expects
+    extract_data(pdf_file, "projected_population_shares_2025.csv")

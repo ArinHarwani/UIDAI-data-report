@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>India Demographic Distribution</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        #map {
+            width: 100%;
+            height: 100vh;
+            background-color: var(--bg-color);
+            z-index: 1;
+        }
+
+        /* Overlay UI */
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            pointer-events: auto;
+            max-width: 320px;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin: 0 0 5px 0;
+            font-weight: 600;
+            background: linear-gradient(45deg, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--text-sub);
+            margin-bottom: 0;
+        }
+
+        .stat-highlight {
+            font-size: 2rem;
+            font-weight: 300;
+            margin: 10px 0;
+            color: #38bdf8;
+        }
+
+        .leaflet-container {
+            background: var(--bg-color);
+        }
+
+        /* Legend */
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            font-size: 0.85rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+            color: var(--text-sub);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 8px;
+            display: inline-block;
+        }
+
+        /* Tooltip refinement */
+        .custom-tooltip {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid #334155;
+            color: #f1f5f9;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            font-family: 'Outfit', sans-serif;
+            padding: 8px 12px;
+        }
+
+        .leaflet-tooltip-left:before,
+        .leaflet-tooltip-right:before {
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="map"></div>
+
+    <div class="ui-overlay">
+        <div class="glass-panel">
+            <h1>India Demographics</h1>
+            <p class="subtitle">Demographic Update</p>
+            <div id="hover-stat">
+                <div style="margin-top: 15px; font-size: 0.9rem; color: #64748b;">
+                    Hover over a district to view details
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script src="data.js"></script>
+    <script src="geo.js"></script>
+
+    <script>
+        // Init Map
+        const map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([22.5937, 78.9629], 5); // India Centered
+
+        // Custom Attribution to keeping clean
+        L.control.attribution({ position: 'bottomleft' }).addTo(map);
+
+        // Dark Matter Base Layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        // --- Color Scale ---
+        // Using a custom palette for 'Amazing' look: Deep Purple -> Blue -> Teal -> Chartreuse -> Yellow
+        // Thresholds based on p25(3k), p50(8k), p75(18k), p90(34k), p95(42k), Max(300k)
+
+        const colors = [
+            { threshold: 0, color: '#1a1a2e' },       // No data / very low
+            { threshold: 2000, color: '#2c1e57' },    // Ultra Low
+            { threshold: 5000, color: '#3d348b' },    // Low
+            { threshold: 10000, color: '#545eb8' },   // Med-Low
+            { threshold: 20000, color: '#5296d5' },   // Med
+            { threshold: 40000, color: '#48d3d6' },   // High
+            { threshold: 80000, color: '#68e898' },   // Very High
+            { threshold: 150000, color: '#f9f871' }   // Ultra High
+        ];
+
+        function getColor(val) {
+            if (!val && val !== 0) return '#1e293b'; // Slate-800 for nodata
+
+            // Find appropriate color bucket
+            for (let i = colors.length - 1; i >= 0; i--) {
+                if (val >= colors[i].threshold) {
+                    return colors[i].color;
+                }
+            }
+            return colors[0].color;
+        }
+
+        // Fuzzy Matcher
+        function cleanName(name) {
+            if (!name) return "";
+            return name.toLowerCase()
+                .replace(/district/g, '')
+                .replace(/[^a-z0-9]/g, '')
+                .trim();
+        }
+
+        function getDistrictData(feature) {
+            const props = feature.properties;
+            const geoState = props.st_nm || props.NAME_1 || props.state || "";
+            const geoDistrict = props.district || props.NAME_2 || props.dtname || "";
+
+            if (!geoState || !geoDistrict) return null;
+
+            const stateKeys = Object.keys(window.enrollmentData);
+            let stateKey = stateKeys.find(k => k.toLowerCase() === geoState.toLowerCase());
+            if (!stateKey) stateKey = stateKeys.find(k => cleanName(k) === cleanName(geoState));
+
+            if (!stateKey) return null;
+
+            const stateData = window.enrollmentData[stateKey];
+            const districtKeys = Object.keys(stateData);
+            let districtKey = districtKeys.find(k => k.toLowerCase() === geoDistrict.toLowerCase());
+
+            if (!districtKey) {
+                const target = cleanName(geoDistrict);
+                districtKey = districtKeys.find(k => cleanName(k) === target);
+            }
+            if (!districtKey) {
+                districtKey = districtKeys.find(k => cleanName(k).includes(cleanName(geoDistrict)) || cleanName(geoDistrict).includes(cleanName(k)));
+            }
+
+            return stateData[districtKey];
+        }
+
+        function style(feature) {
+            const data = getDistrictData(feature);
+            const total = data ? data.total : 0;
+            const hasData = !!data;
+
+            return {
+                fillColor: getColor(total),
+                weight: 0.5,
+                opacity: 1,
+                color: '#334155', // Slate-700 Borders
+                fillOpacity: 0.9
+            };
+        }
+
+        function updatePanel(props, data) {
+            const el = document.getElementById('hover-stat');
+            if (data) {
+                el.innerHTML = `
+                    <div style="font-size: 1.1rem; font-weight: 500; color: white;">${data.district || props.district || props.NAME_2}</div>
+                    <div style="font-size: 0.9rem; color: var(--text-sub); margin-bottom: px;">${props.st_nm || props.NAME_1}</div>
+                    <div class="stat-highlight">${data.total.toLocaleString()}</div>
+                    <div style="font-size: 0.85rem; color: #a1a1aa;">Demographic Update Percentage with respect to total state demographic update: ${data.percentage ? data.percentage + '%' : 'N/A'}</div>
+                `;
+            } else {
+                el.innerHTML = `
+                   <div style="font-size: 1.1rem; font-weight: 500; color: white;">${props.district || props.NAME_2}</div>
+                   <div style="font-size: 0.9rem; color: var(--text-sub);">${props.st_nm || props.NAME_1}</div>
+                   <div class="stat-highlight" style="color: #475569;">No Data</div>
+                `;
+            }
+        }
+
+        function onEachFeature(feature, layer) {
+            layer.on({
+                mouseover: (e) => {
+                    const layer = e.target;
+                    layer.setStyle({
+                        weight: 2,
+                        color: '#f8fafc',
+                        fillOpacity: 1
+                    });
+                    layer.bringToFront();
+
+                    const data = getDistrictData(feature);
+                    // Inject District Name into data object for panel usage if matches
+                    if (data && !data.district) data.district = feature.properties.district || feature.properties.NAME_2;
+
+                    updatePanel(feature.properties, data);
+                },
+                mouseout: (e) => {
+                    geojsonLayer.resetStyle(e.target);
+                    // Optional: Reset panel or keep last hover
+                }
+            });
+        }
+
+        let geojsonLayer;
+        if (window.indiaGeo) {
+            geojsonLayer = L.geoJson(window.indiaGeo, {
+                style: style,
+                onEachFeature: onEachFeature
+            }).addTo(map);
+
+            // Create Legend using our color thresholds
+            const legend = L.control({ position: 'bottomright' });
+            legend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'glass-panel legend');
+                div.style.padding = '10px';
+                div.style.marginBottom = '0'; // Override panel margin
+                div.innerHTML += '<div style="font-weight:600; margin-bottom:5px; color:#fff">Enrollment Count</div>';
+
+                // Reverse iterate to show high to low
+                for (let i = colors.length - 1; i >= 1; i--) { // Skip 0 threshold loop for cleanliness
+                    const low = colors[i].threshold;
+                    const high = (i === colors.length - 1) ? '+' : ' - ' + (colors[i + 1].threshold / 1000) + 'k';
+                    const label = (low / 1000) + 'k' + high;
+
+                    div.innerHTML += `
+                        <div class="legend-item">
+                            <span class="legend-color" style="background:${colors[i].color}"></span>
+                            <span>${label}</span>
+                        </div>
+                    `;
+                }
+                div.innerHTML += `
+                    <div class="legend-item">
+                        <span class="legend-color" style="background:${colors[1].color}"></span>
+                        <span>&lt; 2k</span>
+                    </div>
+                `;
+                return div;
+            };
+            legend.addTo(map);
+
+        } else {
+            alert("Errors Loading Geo Data");
+        }
+
+    </script>
+</body>
+
+</html>

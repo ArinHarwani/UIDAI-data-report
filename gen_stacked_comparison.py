@@ -1,4 +1,6 @@
 import re
+import csv
+import json
 
 def normalize(name):
     name = name.upper().strip()
@@ -7,6 +9,7 @@ def normalize(name):
     name = name.replace('PUDUCHERRY', 'PONDICHERRY')
     if "NCT OF DELHI" in name: return "DELHI"
     if "DADRA" in name and "NAGAR" in name: return "DADRA & NAGAR HAVELI"
+    if "ANDAMAN" in name and "NICOBAR" in name: return "ANDAMAN & NICOBAR ISLANDS"
     return name
 
 def main():
