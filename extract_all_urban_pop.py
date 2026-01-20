@@ -2,117 +2,137 @@ import pdfplumber
 import csv
 import re
 
-def clean_text(text):
-    if not text: return ""
-    return text.replace('\n', ' ').strip()
+EXPECTED_STATES = [
+    "INDIA", "JAMMU & KASHMIR", "HIMACHAL PRADESH", "PUNJAB", "CHANDIGARH",
+    "UTTARAKHAND", "HARYANA", "NCT OF DELHI", "DELHI", "RAJASTHAN", "UTTAR PRADESH",
+    "BIHAR", "SIKKIM", "ARUNACHAL PRADESH", "NAGALAND", "MANIPUR", "MIZORAM",
+    "TRIPURA", "MEGHALAYA", "ASSAM", "WEST BENGAL", "JHARKHAND", "ODISHA",
+    "CHHATTISGARH", "MADHYA PRADESH", "GUJARAT", "DAMAN & DIU", "DADRA & NAGAR HAVELI",
+    "MAHARASHTRA", "ANDHRA PRADESH", "KARNATAKA", "GOA", "LAKSHADWEEP", "KERALA",
+    "TAMIL NADU", "PUDUCHERRY", "ANDAMAN & NICOBAR ISLANDS", "TELANGANA", "LADAKH"
+]
+
+def clean_state_name(name):
+    name = name.replace('(UT)', '').replace('&', 'and')
+    return re.sub(r'\s+', ' ', name).strip()
+
+def find_states_in_line(line):
+    line_upper = line.upper()
+    found = []
+    
+    # Sort by length descending to match "NCT OF DELHI" before "DELHI"
+    # and "JAMMU & KASHMIR" before "JAMMU"
+    sorted_targets = sorted(EXPECTED_STATES, key=len, reverse=True)
+    
+    matches = []
+    
+    # Simple strategy: Find all occurrences
+    for state in sorted_targets:
+        if state in line_upper:
+            # We must find the index
+            start = 0
+            while True:
+                idx = line_upper.find(state, start)
+                if idx == -1: break
+                matches.append((idx, state))
+                # Mask it to avoid re-finding or sub-finding
+                # But masking might mess up indices for others if length changes.
+                # So we replace with same length placeholder.
+                line_upper = line_upper[:idx] + "#" * len(state) + line_upper[idx+len(state):]
+                start = idx + len(state)
+    
+    matches.sort(key=lambda x: x[0])
+    return [m[1] for m in matches]
 
 def extract_data(pdf_path, output_csv):
     results = []
+    pages_to_scan = range(76, 89) 
     
-    # Range identified from previous step
-    pages_to_scan = range(76, 89) # 76 to 88 inclusive
+    total_states_found = 0
     
     with pdfplumber.open(pdf_path) as pdf:
         for page_num in pages_to_scan:
-            print(f"Processing Page {page_num}...")
-            page = pdf.pages[page_num - 1]
-            tables = page.extract_tables()
-            
-            for table in tables:
-                if not table: continue
+            try:
+                print(f"Processing Page {page_num}...")
+                page = pdf.pages[page_num - 1]
+                text = page.extract_text()
+                if not text:
+                    print("  No text found.")
+                    continue
                 
-                # Setup column mapping
-                header_map = {} # col_index -> State Name
+                lines = text.split('\n')
                 
-                # 1. Find the Header Row (contains state names)
-                # It's usually near the top. We look for 'INDIA' or other uppercase names
-                header_row_idx = -1
-                for i, row in enumerate(table[:10]):
-                    # Check if row has any state-like name
-                    row_text = [str(c).upper() for c in row if c]
-                    if any("INDIA" in t or "PRADESH" in t or "KASHMIR" in t for t in row_text):
-                        header_row_idx = i
+                year_idx = -1
+                for i, line in enumerate(lines):
+                    if line.strip().startswith("Year"):
+                        year_idx = i
                         break
                 
-                if header_row_idx == -1:
+                if year_idx == -1:
+                    print("  'Year' row not found.")
                     continue
-                    
-                # 2. Build Mapping
-                current_state = None
-                header_row = table[header_row_idx]
                 
-                # Columns: Year (0), State1_P(1), S1_M(2), S1_F(3), State2_P(4)...
-                # But headers might be merged.
-                # pdfplumber puts value in first cell, None in merged.
+                # Check lines above Year for States
+                header_states = []
+                for i in range(1, 4):
+                    if year_idx - i >= 0:
+                        potential_line = lines[year_idx - i]
+                        found = find_states_in_line(potential_line)
+                        if found:
+                            header_states = found
+                            print(f"  Found states in line '{potential_line}': {found}")
+                            break
+                            
+                if not header_states:
+                    print("  No states found in header.")
+                    continue
                 
-                # Careful: The "Year" column is 0.
-                # Column 1 starts the data.
+                # Find 2025 Data
+                data_vals = []
+                for line in lines:
+                    if line.startswith('2025'):
+                        parts = line.split()
+                        data_vals = parts[1:] # Skip '2025'
+                        break
                 
-                for col_idx in range(1, len(header_row)):
-                    val = clean_text(header_row[col_idx])
-                    if val:
-                        current_state = val
-                    
-                    if current_state:
-                        # Identify if this column is Person, Male, or Female
-                        # The sub-header (row + 1) usually has P/M/F or 1/2/3
-                        # But we can assume triplets: P, M, F.
-                        # Let's verify with subheader lookup if possible, or just assume triplets.
-                        # The snippet showed: India spans 3 cols.
-                        # So for a given State, it covers 3 columns.
-                        
-                        if col_idx not in header_map:
-                            header_map[col_idx] = current_state
+                if not data_vals:
+                    print("  2025 data not found.")
+                    continue
+                
+                # Validate
+                num_vals = len(data_vals)
+                num_states = len(header_states)
+                
+                # Each state has 3 columns: Person, Male, Female
+                expected_vals = num_states * 3
+                
+                if num_vals < expected_vals:
+                    print(f"  Mismatch: Found {num_vals} values but {num_states} states ({expected_vals} expected).")
+                    # Try to align
+                else:
+                    # Align
+                    for s_idx, state in enumerate(header_states):
+                        base = s_idx * 3
+                        p = data_vals[base]
+                        m = data_vals[base+1]
+                        f = data_vals[base+2]
+                        results.append({
+                            'State': clean_state_name(state),
+                            'Person': p,
+                            'Male': m,
+                            'Female': f
+                        })
+                    total_states_found += num_states
+            except Exception as e:
+                print(f"  Error on page {page_num}: {e}")
 
-                # 3. Find 2025 Row
-                for row in table:
-                    val0 = clean_text(str(row[0]))
-                    if '2025' in val0:
-                        # Extract Data
-                        # We iterate through keys in header_map
-                        # But we need to group by State
-                        
-                        # Gather columns for each state
-                        state_data = {} # State -> [vals]
-                        
-                        for col_idx, state in header_map.items():
-                            val = clean_text(str(row[col_idx]))
-                            if state not in state_data:
-                                state_data[state] = []
-                            state_data[state].append(val)
-                            
-                        # Now add to results
-                        for state, vals in state_data.items():
-                            # Expecting 3 values (P, M, F)
-                            # But pure dictionary iteration might be unordered or split?
-                            # Actually we iterated col_idx in order.
-                            
-                            # Clean state name
-                            state_clean = re.sub(r'[^A-Za-z\s&]', '', state).strip()
-                            
-                            # Ensure we have 3 values
-                            # Wait, if `header_map` assigns same state to col 1, 2, 3
-                            # Then `state_data[state]` will have 3 values.
-                            
-                            p_val = vals[0] if len(vals) > 0 else ""
-                            m_val = vals[1] if len(vals) > 1 else ""
-                            f_val = vals[2] if len(vals) > 2 else ""
-                            
-                            results.append({
-                                'State': state_clean,
-                                'Person': p_val,
-                                'Male': m_val,
-                                'Female': f_val
-                            })
-                        
-    # Write to CSV
-    keys = ['State', 'Person', 'Male', 'Female']
+    # Write CSV
     with open(output_csv, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=keys)
+        writer = csv.DictWriter(f, fieldnames=['State', 'Person', 'Male', 'Female'])
         writer.writeheader()
         writer.writerows(results)
-    
-    print(f"Extraction complete. Saved to {output_csv}")
+        
+    print(f"Done. Extracted {len(results)} rows.")
 
 if __name__ == "__main__":
     pdf_file = "Population Projection Report 2011-2036 - upload_compressed_0.pdf"
